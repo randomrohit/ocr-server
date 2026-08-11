@@ -15,17 +15,8 @@ import pytesseract
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from PIL import Image
-from transformers import TrOCRProcessor, VisionEncoderDecoderModel
 
 app = FastAPI(title="Salesforce OCR Server", version="1.0")
-
-# ---------------------------------------------------------------------------
-# Model loading (once, at startup)
-# ---------------------------------------------------------------------------
-print("Loading TrOCR model... (first run downloads ~1.3GB)")
-TROCR_PROCESSOR = TrOCRProcessor.from_pretrained("microsoft/trocr-base-handwritten")
-TROCR_MODEL = VisionEncoderDecoderModel.from_pretrained("microsoft/trocr-base-handwritten")
-print("TrOCR model loaded.")
 
 MAX_FILE_SIZE_MB = 8
 ALLOWED_FORMATS = {"JPEG", "JPG", "PNG"}
@@ -37,10 +28,6 @@ ALLOWED_FORMATS = {"JPEG", "JPG", "PNG"}
 class OCRRequest(BaseModel):
     image_base64: str          # base64 encoded image (no data: prefix)
     file_name: Optional[str] = "document"
-    # Default "printed": full-page Tesseract. This form is printed labels +
-    # handwritten fill-ins — TrOCR expects single cropped text lines, not a
-    # whole page, so it is NOT a good full-page engine for this layout.
-    mode: Optional[str] = "printed"  # "handwritten" | "printed"
 
 
 class ExtractedFields(BaseModel):
@@ -97,20 +84,9 @@ def preprocess_image(pil_image: Image.Image) -> np.ndarray:
 
 
 # ---------------------------------------------------------------------------
-# OCR engines
+# OCR engine (Tesseract — printed labels + handwritten fill-ins on this form)
 # ---------------------------------------------------------------------------
-def run_trocr(processed_img: np.ndarray) -> str:
-    """Run handwriting OCR via TrOCR. Expects single-line/region crops for
-    best accuracy; here run on whole doc as a simple baseline."""
-    pil_img = Image.fromarray(processed_img).convert("RGB")
-    pixel_values = TROCR_PROCESSOR(images=pil_img, return_tensors="pt").pixel_values
-    generated_ids = TROCR_MODEL.generate(pixel_values, max_length=256)
-    text = TROCR_PROCESSOR.batch_decode(generated_ids, skip_special_tokens=True)[0]
-    return text
-
-
 def run_tesseract(processed_img: np.ndarray) -> str:
-    """Run printed-text OCR via Tesseract."""
     return pytesseract.image_to_string(processed_img)
 
 
@@ -209,10 +185,7 @@ def extract_document(req: OCRRequest):
 
     # --- OCR ---
     try:
-        if req.mode == "printed":
-            raw_text = run_tesseract(processed)
-        else:
-            raw_text = run_trocr(processed)
+        raw_text = run_tesseract(processed)
     except Exception as e:
         return OCRResponse(success=False, error=f"OCR engine failed: {str(e)}")
 
