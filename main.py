@@ -62,7 +62,7 @@ def preprocess_image(pil_image: Image.Image) -> np.ndarray:
 
     # Downscale very large images — free-tier CPU/RAM is limited and
     # fastNlMeansDenoising is slow at high resolution.
-    max_dim = 1800
+    max_dim = 1200
     h, w = img.shape[:2]
     if max(h, w) > max_dim:
         scale = max_dim / max(h, w)
@@ -177,6 +177,10 @@ def extract_fields(text: str) -> ExtractedFields:
 # ---------------------------------------------------------------------------
 @app.post("/ocr/extract", response_model=OCRResponse)
 def extract_document(req: OCRRequest):
+    import time
+    t0 = time.time()
+    print(f"[extract] request received")
+
     # --- validate ---
     try:
         img_bytes = base64.b64decode(req.image_base64)
@@ -197,18 +201,26 @@ def extract_document(req: OCRRequest):
     if pil_image.format not in ALLOWED_FORMATS:
         raise HTTPException(status_code=400, detail=f"Unsupported format: {pil_image.format}")
 
+    print(f"[extract] validated in {time.time()-t0:.1f}s, size={size_mb:.2f}MB, format={pil_image.format}, dims={pil_image.size}")
+
     # --- preprocess ---
+    t1 = time.time()
     processed = preprocess_image(pil_image)
+    print(f"[extract] preprocessed in {time.time()-t1:.1f}s")
 
     # --- OCR ---
+    t2 = time.time()
     try:
         raw_text = run_tesseract(processed)
     except Exception as e:
+        print(f"[extract] OCR FAILED after {time.time()-t2:.1f}s: {e}")
         return OCRResponse(success=False, error=f"OCR engine failed: {str(e)}")
+    print(f"[extract] OCR done in {time.time()-t2:.1f}s, text_len={len(raw_text)}")
 
     # --- field extraction ---
     fields = extract_fields(raw_text)
 
+    print(f"[extract] TOTAL time {time.time()-t0:.1f}s")
     return OCRResponse(success=True, raw_text=raw_text, fields=fields)
 
 
