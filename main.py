@@ -62,7 +62,7 @@ def preprocess_image(pil_image: Image.Image) -> np.ndarray:
 
     # Downscale very large images — free-tier CPU/RAM is limited and
     # fastNlMeansDenoising is slow at high resolution.
-    max_dim = 1800
+    max_dim = 1400
     h, w = img.shape[:2]
     if max(h, w) > max_dim:
         scale = max_dim / max(h, w)
@@ -87,7 +87,7 @@ def run_tesseract(processed_img: np.ndarray) -> str:
     # --psm 6: uniform block of text. -c tessedit_do_invert=0: skip auto-invert
     # check (saves a pass). --oem 1: LSTM only (skip legacy engine combo pass).
     config = "--psm 6 --oem 1 -c tessedit_do_invert=0"
-    return pytesseract.image_to_string(processed_img, config=config, timeout=60)
+    return pytesseract.image_to_string(processed_img, config=config, timeout=90)
 
 
 # ---------------------------------------------------------------------------
