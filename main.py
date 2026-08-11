@@ -13,10 +13,18 @@ import cv2
 import numpy as np
 import pytesseract
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from PIL import Image
 
 app = FastAPI(title="Salesforce OCR Server", version="1.0")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 MAX_FILE_SIZE_MB = 8
 ALLOWED_FORMATS = {"JPEG", "JPG", "PNG"}
