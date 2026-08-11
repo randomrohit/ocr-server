@@ -62,7 +62,7 @@ def preprocess_image(pil_image: Image.Image) -> np.ndarray:
 
     # Downscale very large images — free-tier CPU/RAM is limited and
     # fastNlMeansDenoising is slow at high resolution.
-    max_dim = 1100
+    max_dim = 1800
     h, w = img.shape[:2]
     if max(h, w) > max_dim:
         scale = max_dim / max(h, w)
@@ -76,23 +76,6 @@ def preprocess_image(pil_image: Image.Image) -> np.ndarray:
 
     # Otsu's threshold — cleaner than adaptive for evenly-lit scanned/photographed forms
     _, thresh = cv2.threshold(denoised, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
-
-    # Deskew based on text bounding box
-    coords = np.column_stack(np.where(thresh < 255))
-    if len(coords) > 0:
-        angle = cv2.minAreaRect(coords)[-1]
-        if angle < -45:
-            angle = -(90 + angle)
-        else:
-            angle = -angle
-        if abs(angle) > 0.5:  # only rotate if meaningfully skewed
-            (h, w) = thresh.shape
-            center = (w // 2, h // 2)
-            M = cv2.getRotationMatrix2D(center, angle, 1.0)
-            thresh = cv2.warpAffine(
-                thresh, M, (w, h),
-                flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE
-            )
 
     return thresh
 
