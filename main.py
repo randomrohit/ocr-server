@@ -62,7 +62,7 @@ def preprocess_image(pil_image: Image.Image) -> np.ndarray:
 
     # Downscale very large images — free-tier CPU/RAM is limited and
     # fastNlMeansDenoising is slow at high resolution.
-    max_dim = 2200
+    max_dim = 1100
     h, w = img.shape[:2]
     if max(h, w) > max_dim:
         scale = max_dim / max(h, w)
@@ -101,8 +101,10 @@ def preprocess_image(pil_image: Image.Image) -> np.ndarray:
 # OCR engine (Tesseract — printed labels + handwritten fill-ins on this form)
 # ---------------------------------------------------------------------------
 def run_tesseract(processed_img: np.ndarray) -> str:
-    config = "--psm 6"  # assume a single uniform block of text (good for forms)
-    return pytesseract.image_to_string(processed_img, config=config)
+    # --psm 6: uniform block of text. -c tessedit_do_invert=0: skip auto-invert
+    # check (saves a pass). --oem 1: LSTM only (skip legacy engine combo pass).
+    config = "--psm 6 --oem 1 -c tessedit_do_invert=0"
+    return pytesseract.image_to_string(processed_img, config=config, timeout=60)
 
 
 # ---------------------------------------------------------------------------
@@ -210,6 +212,9 @@ def extract_document(req: OCRRequest):
     t2 = time.time()
     try:
         raw_text = run_tesseract(processed)
+    except RuntimeError as e:
+        print(f"[extract] OCR TIMEOUT after {time.time()-t2:.1f}s: {e}")
+        return OCRResponse(success=False, error="OCR timed out — image too large/complex for current server resources")
     except Exception as e:
         print(f"[extract] OCR FAILED after {time.time()-t2:.1f}s: {e}")
         return OCRResponse(success=False, error=f"OCR engine failed: {str(e)}")
