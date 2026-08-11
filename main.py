@@ -60,10 +60,19 @@ def preprocess_image(pil_image: Image.Image) -> np.ndarray:
     """Deskew, denoise, binarize for cleaner OCR input."""
     img = cv2.cvtColor(np.array(pil_image.convert("RGB")), cv2.COLOR_RGB2BGR)
 
+    # Downscale very large images — free-tier CPU/RAM is limited and
+    # fastNlMeansDenoising is slow at high resolution.
+    max_dim = 1800
+    h, w = img.shape[:2]
+    if max(h, w) > max_dim:
+        scale = max_dim / max(h, w)
+        img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    # Denoise
-    denoised = cv2.fastNlMeansDenoising(gray, h=10)
+    # Lighter denoise (median blur) — much faster than fastNlMeansDenoising,
+    # sufficient for phone-photo document noise.
+    denoised = cv2.medianBlur(gray, 3)
 
     # Adaptive threshold (binarize)
     thresh = cv2.adaptiveThreshold(
