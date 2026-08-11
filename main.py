@@ -62,7 +62,7 @@ def preprocess_image(pil_image: Image.Image) -> np.ndarray:
 
     # Downscale very large images — free-tier CPU/RAM is limited and
     # fastNlMeansDenoising is slow at high resolution.
-    max_dim = 1200
+    max_dim = 2200
     h, w = img.shape[:2]
     if max(h, w) > max_dim:
         scale = max_dim / max(h, w)
@@ -74,11 +74,8 @@ def preprocess_image(pil_image: Image.Image) -> np.ndarray:
     # sufficient for phone-photo document noise.
     denoised = cv2.medianBlur(gray, 3)
 
-    # Adaptive threshold (binarize)
-    thresh = cv2.adaptiveThreshold(
-        denoised, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
-        cv2.THRESH_BINARY, 31, 11
-    )
+    # Otsu's threshold — cleaner than adaptive for evenly-lit scanned/photographed forms
+    _, thresh = cv2.threshold(denoised, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
 
     # Deskew based on text bounding box
     coords = np.column_stack(np.where(thresh < 255))
@@ -104,7 +101,8 @@ def preprocess_image(pil_image: Image.Image) -> np.ndarray:
 # OCR engine (Tesseract — printed labels + handwritten fill-ins on this form)
 # ---------------------------------------------------------------------------
 def run_tesseract(processed_img: np.ndarray) -> str:
-    return pytesseract.image_to_string(processed_img)
+    config = "--psm 6"  # assume a single uniform block of text (good for forms)
+    return pytesseract.image_to_string(processed_img, config=config)
 
 
 # ---------------------------------------------------------------------------
@@ -133,12 +131,12 @@ def extract_fields(text: str) -> ExtractedFields:
     fields = ExtractedFields()
 
     # --- Hospital/Clinic Name -> Installed_Location_Name__c ---
-    m = re.search(r"Hospital\s*/?\s*Clinic\s*Name\s*[:\-]\s*(.+)", text, re.IGNORECASE)
+    m = re.search(r"Hospital.{0,15}Clinic.{0,10}Name\s*[:\-]*\s*(.+)", text, re.IGNORECASE)
     if m:
         fields.installed_location_name = m.group(1).strip().strip("_").strip()
 
     # --- Model Name -> used for Order_Product__c fuzzy lookup ---
-    m = re.search(r"Model\s*Name\s*[:\-]\s*(.+)", text, re.IGNORECASE)
+    m = re.search(r"Model\s*Name\s*[:\-=]*\s*([A-Za-z0-9][A-Za-z0-9\s\-]{2,40})", text, re.IGNORECASE)
     if m:
         fields.model_name = m.group(1).strip().strip("_").strip()
 
